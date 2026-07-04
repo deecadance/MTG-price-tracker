@@ -1,0 +1,12 @@
+{
+  "min_release_date": "2023-01-01",
+  "listing_language": "en",
+  "sealed_category_patterns": [
+    "booster box",
+    "prerelease"
+  ],
+  "extra_blueprint_name_patterns_in_booster_category": [
+    "collector booster"
+  ],
+  "lowest_n": 5
+}

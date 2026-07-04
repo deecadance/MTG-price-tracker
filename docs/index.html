@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MTG Sealed Price Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #12141a; --panel: #1c1f28; --text: #e8e9ee; --muted: #9aa0b0;
+    --accent: #e0703c; --border: #2c3040;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: 18px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+  }
+  h1 { font-size: 20px; margin: 0; }
+  #generated { color: var(--muted); font-size: 13px; }
+  .controls {
+    display: flex; gap: 12px; padding: 16px 24px; flex-wrap: wrap; align-items: center;
+  }
+  select, .toggle {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; font-size: 14px;
+  }
+  .toggle { cursor: pointer; user-select: none; }
+  .toggle.active { border-color: var(--accent); color: var(--accent); }
+  #products {
+    display: flex; gap: 8px; padding: 0 24px 12px; flex-wrap: wrap;
+  }
+  .chip {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+    padding: 5px 12px; font-size: 13px; cursor: pointer; user-select: none;
+    color: var(--muted);
+  }
+  .chip.active { color: var(--text); border-color: currentColor; }
+  #chart-wrap { padding: 8px 24px 32px; height: 60vh; min-height: 380px; }
+  #empty { color: var(--muted); padding: 40px 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MTG Sealed Price Tracker</h1>
+  <span id="generated"></span>
+</header>
+
+<div class="controls">
+  <select id="set-select"></select>
+  <select id="metric-select">
+    <option value="avg5">Average of 5 cheapest</option>
+    <option value="min">Lowest listing</option>
+  </select>
+  <span class="toggle active" id="toggle-all">All sellers</span>
+  <span class="toggle active" id="toggle-zero">CardTrader Zero</span>
+</div>
+
+<div id="products"></div>
+<div id="chart-wrap"><canvas id="chart"></canvas></div>
+<div id="empty" hidden>No data yet — the first daily snapshot will appear here.</div>
+
+<script>
+const PALETTE = ["#e0703c","#4cc38a","#5aa7f0","#d4b04a","#c17ee8",
+                 "#e8647a","#57c7d4","#a0b055","#e09bb8","#8a93f0"];
+let data = null, chart = null;
+let state = { set: 0, metric: "avg5", showAll: true, showZero: true, hidden: new Set() };
+
+async function init() {
+  try {
+    data = await (await fetch("data.json", {cache: "no-store"})).json();
+  } catch (e) { data = {sets: []}; }
+  document.getElementById("generated").textContent =
+    data.generated ? "updated " + data.generated : "";
+  if (!data.sets.length) {
+    document.getElementById("empty").hidden = false;
+    document.getElementById("chart-wrap").hidden = true;
+    return;
+  }
+  const setSelect = document.getElementById("set-select");
+  data.sets.forEach((s, i) => {
+    const option = document.createElement("option");
+    option.value = i;
+    option.textContent = `${s.name} (${s.released_at})`;
+    setSelect.appendChild(option);
+  });
+  setSelect.onchange = () => { state.set = +setSelect.value; state.hidden.clear(); render(); };
+  document.getElementById("metric-select").onchange = (e) => {
+    state.metric = e.target.value; render();
+  };
+  bindToggle("toggle-all", () => state.showAll = !state.showAll);
+  bindToggle("toggle-zero", () => state.showZero = !state.showZero);
+  render();
+}
+
+function bindToggle(id, flip) {
+  const el = document.getElementById(id);
+  el.onclick = () => { flip(); el.classList.toggle("active"); render(); };
+}
+
+function render() {
+  const set = data.sets[state.set];
+  const chipBox = document.getElementById("products");
+  chipBox.innerHTML = "";
+  set.products.forEach((p, i) => {
+    const chip = document.createElement("span");
+    chip.className = "chip" + (state.hidden.has(p.id) ? "" : " active");
+    chip.style.color = state.hidden.has(p.id) ? "" : PALETTE[i % PALETTE.length];
+    chip.textContent = p.name;
+    chip.onclick = () => {
+      state.hidden.has(p.id) ? state.hidden.delete(p.id) : state.hidden.add(p.id);
+      render();
+    };
+    chipBox.appendChild(chip);
+  });
+
+  const datasets = [];
+  set.products.forEach((p, i) => {
+    if (state.hidden.has(p.id)) return;
+    const color = PALETTE[i % PALETTE.length];
+    const series = [
+      {on: state.showAll,  key: state.metric + "_all",  label: p.name + " (all)",  dash: []},
+      {on: state.showZero, key: state.metric + "_zero", label: p.name + " (Zero)", dash: [6,4]},
+    ];
+    for (const s of series) {
+      if (!s.on) continue;
+      datasets.push({
+        label: s.label,
+        data: p.dates.map((d, j) => ({x: d, y: p[s.key][j]})),
+        borderColor: color, backgroundColor: color,
+        borderDash: s.dash, borderWidth: 2, pointRadius: 2, spanGaps: true,
+      });
+    }
+  });
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("chart"), {
+    type: "line",
+    data: { datasets },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: "nearest", intersect: false },
+      scales: {
+        x: { type: "category", grid: {color: "#242836"}, ticks: {color: "#9aa0b0"},
+             labels: [...new Set(set.products.flatMap(p => p.dates))].sort() },
+        y: { grid: {color: "#242836"}, ticks: {color: "#9aa0b0",
+             callback: v => "€" + v} },
+      },
+      plugins: {
+        legend: { labels: { color: "#e8e9ee", boxWidth: 18, font: {size: 11} } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: €${c.parsed.y}` } },
+      },
+    },
+  });
+}
+
+init();
+</script>
+</body>
+</html>

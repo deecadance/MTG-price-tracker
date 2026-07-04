@@ -1,0 +1,44 @@
+name: Daily price snapshot
+
+on:
+  schedule:
+    # 04:30 UTC every day (06:30 in Italy during summer). GitHub may delay
+    # scheduled runs by a few minutes — that's normal.
+    - cron: "30 4 * * *"
+  # Lets you trigger a run manually from the Actions tab (useful for testing).
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch today's prices from CardTrader
+        env:
+          CARDTRADER_TOKEN: ${{ secrets.CARDTRADER_TOKEN }}
+        run: python fetch_prices.py
+
+      - name: Rebuild the chart site data
+        run: python build_site.py
+
+      - name: Commit and push the new snapshot
+        run: |
+          git config user.name "price-bot"
+          git config user.email "actions@github.com"
+          git add data/ docs/
+          if git diff --cached --quiet; then
+            echo "Nothing changed today."
+          else
+            git commit -m "Price snapshot $(date -u +%F)"
+            git push
+          fi
