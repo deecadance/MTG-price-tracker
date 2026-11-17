@@ -105,7 +105,7 @@ async function init() {
   data.sets.forEach((s, i) => {
     const option = document.createElement("option");
     option.value = i;
-    option.textContent = `${s.name} (${s.released_at || "release date not announced"})`;
+    option.textContent = `${s.name} (${s.released_at || "release date unknown"})`;
     setSelect.appendChild(option);
   });
   setSelect.onchange = () => { state.set = +setSelect.value; state.hidden.clear(); render(); };

@@ -29,8 +29,8 @@ def main():
     db.row_factory = sqlite3.Row
 
     sets = []
-    # Sets without a known release date are usually brand-new preorders,
-    # so they go first, then the rest from newest to oldest.
+    # Sets without a known release date (brand-new preorders, or CardTrader-only
+    # groupings like holiday releases) go first, then newest to oldest.
     expansions = db.execute(
         "SELECT * FROM expansions ORDER BY released_at IS NULL DESC, released_at DESC, name"
     ).fetchall()
