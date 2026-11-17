@@ -2,18 +2,27 @@ name: Daily price snapshot
 
 on:
   schedule:
-    # 04:30 UTC every day (06:30 in Italy during summer). GitHub may delay
-    # scheduled runs by a few minutes — that's normal.
+    # Main run: 04:30 UTC (06:30 in Italy during summer). GitHub often starts
+    # scheduled runs hours late — that's normal.
     - cron: "30 4 * * *"
+    # Safety net later in the day. If the morning run already saved a
+    # complete snapshot, this one stops right away without changing anything.
+    - cron: "47 15 * * *"
   # Lets you trigger a run manually from the Actions tab (useful for testing).
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# Never let two runs overlap: both would try to save the database.
+concurrency:
+  group: price-snapshot
+  cancel-in-progress: false
+
 jobs:
   snapshot:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
@@ -24,6 +33,11 @@ jobs:
           python-version: "3.12"
 
       - name: Fetch today's prices from CardTrader
+        id: fetch
+        # If something goes wrong, carry on anyway so whatever was fetched
+        # still gets saved. The last step then marks the run as failed, which
+        # makes GitHub email you.
+        continue-on-error: true
         env:
           CARDTRADER_TOKEN: ${{ secrets.CARDTRADER_TOKEN }}
         run: python fetch_prices.py
@@ -35,10 +49,16 @@ jobs:
         run: |
           git config user.name "price-bot"
           git config user.email "actions@github.com"
-          git add data/ docs/
-          if git diff --cached --quiet; then
-            echo "Nothing changed today."
+          if git diff --quiet -- data/; then
+            echo "Database unchanged — nothing to save."
           else
+            git add data/ docs/
             git commit -m "Price snapshot $(date -u +%F)"
             git push
           fi
+
+      - name: Flag an incomplete run
+        if: steps.fetch.outcome == 'failure'
+        run: |
+          echo "::error::Today's fetch was incomplete or failed. Whatever was fetched has been saved. Open the 'Fetch today's prices' step above for details; the next scheduled run will retry."
+          exit 1

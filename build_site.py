@@ -29,8 +29,10 @@ def main():
     db.row_factory = sqlite3.Row
 
     sets = []
+    # Sets without a known release date are usually brand-new preorders,
+    # so they go first, then the rest from newest to oldest.
     expansions = db.execute(
-        "SELECT * FROM expansions ORDER BY released_at DESC, name"
+        "SELECT * FROM expansions ORDER BY released_at IS NULL DESC, released_at DESC, name"
     ).fetchall()
 
     for expansion in expansions:
@@ -70,10 +72,22 @@ def main():
                 }
             )
 
+    latest_date = db.execute("SELECT max(date) FROM snapshots").fetchone()[0]
+    last_run = None
+    has_runs = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runs'"
+    ).fetchone()
+    if has_runs:
+        row = db.execute("SELECT date, status FROM runs ORDER BY date DESC LIMIT 1").fetchone()
+        if row:
+            last_run = {"date": row["date"], "status": row["status"]}
+
     OUTPUT_PATH.parent.mkdir(exist_ok=True)
     payload = {
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "currency": "EUR",
+        "latest_date": latest_date,
+        "last_run": last_run,
         "sets": sets,
     }
     OUTPUT_PATH.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")

@@ -8,5 +8,6 @@
   "extra_blueprint_name_patterns_in_booster_category": [
     "collector booster"
   ],
-  "lowest_n": 5
+  "lowest_n": 5,
+  "expected_currency": "EUR"
 }

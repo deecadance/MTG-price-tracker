@@ -41,6 +41,16 @@
   .chip.active { color: var(--text); border-color: currentColor; }
   #chart-wrap { padding: 8px 24px 32px; height: 60vh; min-height: 380px; }
   #empty { color: var(--muted); padding: 40px 24px; }
+  #stale {
+    margin: 12px 24px 0; padding: 10px 14px; border-radius: 8px;
+    border: 1px solid #d4b04a; color: #d4b04a; font-size: 14px;
+  }
+  footer {
+    padding: 16px 24px 28px; border-top: 1px solid var(--border);
+    color: var(--muted); font-size: 12px; line-height: 1.6;
+  }
+  footer p { margin: 0 0 6px; }
+  footer a { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -63,6 +73,16 @@
 <div id="chart-wrap"><canvas id="chart"></canvas></div>
 <div id="empty" hidden>No data yet — the first daily snapshot will appear here.</div>
 
+<footer>
+  <p>Prices are the cheapest English-language listings on
+    <a href="https://www.cardtrader.com" rel="noopener">CardTrader</a>, in EUR,
+    without shipping, captured once a day. Not affiliated with CardTrader.</p>
+  <p>MTG Sealed Price Tracker is unofficial Fan Content permitted under the
+    <a href="https://company.wizards.com/en/legal/fancontentpolicy" rel="noopener">Fan Content Policy</a>.
+    Not approved/endorsed by Wizards. Portions of the materials used are property of
+    Wizards of the Coast. ©Wizards of the Coast LLC.</p>
+</footer>
+
 <script>
 const PALETTE = ["#e0703c","#4cc38a","#5aa7f0","#d4b04a","#c17ee8",
                  "#e8647a","#57c7d4","#a0b055","#e09bb8","#8a93f0"];
@@ -75,6 +95,7 @@ async function init() {
   } catch (e) { data = {sets: []}; }
   document.getElementById("generated").textContent =
     data.generated ? "updated " + data.generated : "";
+  showStaleWarning();
   if (!data.sets.length) {
     document.getElementById("empty").hidden = false;
     document.getElementById("chart-wrap").hidden = true;
@@ -84,7 +105,7 @@ async function init() {
   data.sets.forEach((s, i) => {
     const option = document.createElement("option");
     option.value = i;
-    option.textContent = `${s.name} (${s.released_at})`;
+    option.textContent = `${s.name} (${s.released_at || "release date not announced"})`;
     setSelect.appendChild(option);
   });
   setSelect.onchange = () => { state.set = +setSelect.value; state.hidden.clear(); render(); };
@@ -94,6 +115,19 @@ async function init() {
   bindToggle("toggle-all", () => state.showAll = !state.showAll);
   bindToggle("toggle-zero", () => state.showZero = !state.showZero);
   render();
+}
+
+// Warn visitors when prices have stopped updating, so old numbers are
+// never mistaken for today's.
+function showStaleWarning() {
+  if (!data.latest_date) return;
+  const ageDays = (Date.now() - Date.parse(data.latest_date + "T00:00:00Z")) / 86400000;
+  if (ageDays < 2.5) return;
+  const box = document.createElement("div");
+  box.id = "stale";
+  box.textContent = `Heads up: the latest prices are from ${data.latest_date}. ` +
+    "The daily update hasn't run since then.";
+  document.querySelector("header").after(box);
 }
 
 function bindToggle(id, flip) {
