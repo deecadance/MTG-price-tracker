@@ -9,5 +9,12 @@
     "collector booster"
   ],
   "lowest_n": 5,
-  "expected_currency": "EUR"
+  "expected_currency": "EUR",
+  "show_projections": false,
+  "projection_events": [
+    {
+      "date": "2026-11-30",
+      "label": "Banned & Restricted announcement"
+    }
+  ]
 }

@@ -51,6 +51,19 @@
   }
   footer p { margin: 0 0 6px; }
   footer a { color: var(--muted); }
+  /* Price projections (only visible when data.json has a "projection" block) */
+  #projection-select { max-width: 100%; }
+  #projection-note {
+    margin: 0 24px 24px; padding: 12px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--panel);
+    color: var(--muted); font-size: 13px; line-height: 1.55;
+  }
+  #projection-note p { margin: 0 0 6px; }
+  #projection-note p:last-child { margin-bottom: 0; }
+  #projection-note .disclaimer { color: var(--text); font-weight: 600; }
+  #projection-note .warn { color: #d4b04a; }
+  #projection-note .small { font-size: 12px; }
+  #projection-note a { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -67,10 +80,12 @@
   </select>
   <span class="toggle active" id="toggle-all">All sellers</span>
   <span class="toggle active" id="toggle-zero">CardTrader Zero</span>
+  <select id="projection-select" aria-label="Price projection" hidden></select>
 </div>
 
 <div id="products"></div>
 <div id="chart-wrap"><canvas id="chart"></canvas></div>
+<div id="projection-note" hidden></div>
 <div id="empty" hidden>No data yet — the first daily snapshot will appear here.</div>
 
 <footer>
@@ -87,7 +102,8 @@
 const PALETTE = ["#e0703c","#4cc38a","#5aa7f0","#d4b04a","#c17ee8",
                  "#e8647a","#57c7d4","#a0b055","#e09bb8","#8a93f0"];
 let data = null, chart = null;
-let state = { set: 0, metric: "avg5", showAll: true, showZero: true, hidden: new Set() };
+let state = { set: 0, metric: "avg5", showAll: true, showZero: true, hidden: new Set(),
+              projection: "auto" };
 
 async function init() {
   try {
@@ -108,12 +124,15 @@ async function init() {
     option.textContent = `${s.name} (${s.released_at || "release date unknown"})`;
     setSelect.appendChild(option);
   });
-  setSelect.onchange = () => { state.set = +setSelect.value; state.hidden.clear(); render(); };
+  setSelect.onchange = () => {
+    state.set = +setSelect.value; state.hidden.clear(); state.projection = "auto"; render();
+  };
   document.getElementById("metric-select").onchange = (e) => {
     state.metric = e.target.value; render();
   };
   bindToggle("toggle-all", () => state.showAll = !state.showAll);
   bindToggle("toggle-zero", () => state.showZero = !state.showZero);
+  if (data.projection) setupProjection();
   render();
 }
 
@@ -170,6 +189,9 @@ function render() {
     }
   });
 
+  let labels = [...new Set(set.products.flatMap(p => p.dates))].sort();
+  if (data.projection) labels = addProjection(set, datasets, labels);
+
   if (chart) chart.destroy();
   chart = new Chart(document.getElementById("chart"), {
     type: "line",
@@ -179,16 +201,146 @@ function render() {
       interaction: { mode: "nearest", intersect: false },
       scales: {
         x: { type: "category", grid: {color: "#242836"}, ticks: {color: "#9aa0b0"},
-             labels: [...new Set(set.products.flatMap(p => p.dates))].sort() },
+             labels },
         y: { grid: {color: "#242836"}, ticks: {color: "#9aa0b0",
              callback: v => "€" + v} },
       },
       plugins: {
-        legend: { labels: { color: "#e8e9ee", boxWidth: 18, font: {size: 11} } },
-        tooltip: { callbacks: { label: c => `${c.dataset.label}: €${c.parsed.y}` } },
+        legend: { labels: { color: "#e8e9ee", boxWidth: 18, font: {size: 11},
+                            filter: (item, d) => !d.datasets[item.datasetIndex].legendHidden } },
+        tooltip: { callbacks: {
+          label: c => `${c.dataset.tipLabel || c.dataset.label}: €${c.parsed.y}` } },
       },
     },
   });
+}
+
+// ---------- Price projections (Phase 4) ----------
+// Everything below runs only when data.json contains a "projection" block.
+// build_site.py adds it only when config.json has "show_projections": true,
+// so with projections switched off the page looks exactly as before.
+const DISCLAIMER = "Statistical estimate from past prices only — not financial advice. " +
+  "Bans, reprints and spoilers can move prices far outside this range.";
+const HOW_IT_WORKS_URL = "https://github.com/deecadance/MTG-price-tracker/blob/main/FORECAST.md";
+
+function setupProjection() {
+  const select = document.getElementById("projection-select");
+  select.hidden = false;
+  select.onchange = () => {
+    state.projection = select.value ? +select.value : null;
+    if (state.projection) state.hidden.delete(state.projection);
+    render();
+  };
+  document.getElementById("projection-note").hidden = false;
+}
+
+// Fill the "Projection" menu with this set's products that have a projection,
+// and return the product whose band should be drawn (or null).
+function fillProjectionSelect(set) {
+  const withForecast = set.products.filter(p => p.forecast);
+  if (state.projection === "auto") {
+    state.projection = withForecast.length ? withForecast[0].id : null;
+  }
+  const select = document.getElementById("projection-select");
+  select.replaceChildren(new Option(
+    withForecast.length ? "No projection" : "No projection for this set yet", ""));
+  withForecast.forEach(p => select.add(new Option("Projection: " + p.name, p.id)));
+  select.value = state.projection == null ? "" : String(state.projection);
+  return withForecast.find(p => p.id === state.projection) || null;
+}
+
+// Draw the shaded 10–90% band after the last date (only for the
+// "Average of 5 cheapest" line of all sellers) and explain it under the chart.
+// Returns the x-axis labels, extended with the future dates of the band.
+function addProjection(set, datasets, labels) {
+  const product = fillProjectionSelect(set);
+  const note = document.getElementById("projection-note");
+  note.replaceChildren();
+  addNoteLine(note, data.projection.disclaimer || DISCLAIMER, "disclaimer");
+  if (!product) {
+    addNoteLine(note, set.products.some(p => p.forecast)
+      ? "Pick a product in the Projection menu to see its likely price range."
+      : "Not enough price history in this set for a projection yet.");
+  } else if (state.metric !== "avg5" || !state.showAll) {
+    addNoteLine(note, "Projections are drawn only for “Average of 5 cheapest” " +
+      "with “All sellers” switched on.");
+  } else if (state.hidden.has(product.id)) {
+    addNoteLine(note, `${product.name} is hidden — click its name above to show it ` +
+      "together with its projection.");
+  } else {
+    const color = PALETTE[set.products.indexOf(product) % PALETTE.length];
+    datasets.push(...bandDatasets(product, color));
+    labels = extendLabels(labels, product.forecast);
+    explainBand(note, product);
+  }
+  return labels;
+}
+
+// Two invisible-ish lines (10% and 90%) with the space between them filled.
+function bandDatasets(product, color) {
+  const f = product.forecast;
+  const start = {x: f.last_date, y: f.last_eur};
+  const edge = key => [start, ...f.bands.map(b => ({x: b.date, y: b[key]}))];
+  const look = {borderColor: withAlpha(color, 0.55), backgroundColor: withAlpha(color, 0.18),
+                borderWidth: 1, pointRadius: 0, spanGaps: true};
+  return [
+    {...look, label: "projection-low", legendHidden: true, fill: false,
+     tipLabel: product.name + " — projection low (10%)", data: edge("p10")},
+    {...look, label: product.name + " — likely range (10–90%)", fill: "-1",
+     tipLabel: product.name + " — projection high (90%)", data: edge("p90")},
+  ];
+}
+
+function withAlpha(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+// The x axis is a list of dates: add every day up to the end of the band.
+function extendLabels(labels, f) {
+  const all = new Set(labels);
+  const end = Date.parse(f.bands[f.bands.length - 1].date + "T00:00:00Z");
+  let day = Date.parse(labels[labels.length - 1] + "T00:00:00Z");
+  while (day < end) {
+    day += 86400000;
+    all.add(new Date(day).toISOString().slice(0, 10));
+  }
+  [f.last_date, ...f.bands.map(b => b.date)].forEach(d => all.add(d));
+  return [...all].sort();
+}
+
+function explainBand(note, product) {
+  const f = product.forecast, p = data.projection;
+  const eur = v => "€" + v.toFixed(2);
+  const ranges = f.bands.map(b => `by ${b.date}: ${eur(b.p10)}–${eur(b.p90)}`).join("; ");
+  addNoteLine(note, `Shaded area: the likely range for ${product.name} ` +
+    `(average of 5 cheapest, all sellers) — ${ranges}. It is built from how much ` +
+    "similar products moved in the past: 8 in 10 of those past moves stayed inside a range " +
+    "this wide. That is not a promise — the track record below shows how often it really held.");
+  const record = (p.track_record || {})[f.group] || {};
+  const groupName = ((p.group_labels || {})[f.group] || f.group).toLowerCase();
+  f.bands.forEach(b => {
+    const r = record[String(b.h)];
+    if (!r || !r.n_backtests || r.coverage_p10_p90 == null) return;
+    addNoteLine(note, `Track record, ${b.h}-day range (${groupName}): over the past ` +
+      `${r.n_backtests} tests, the real price landed inside the band ` +
+      `${Math.round(r.coverage_p10_p90 * 100)}% of the time.`);
+  });
+  (f.events || []).forEach(e => addNoteLine(note,
+    `Heads up: ${e.label || "an event"} on ${e.date} falls inside this window — ` +
+    "prices can jump around such events.", "warn"));
+  const line = addNoteLine(note, `Model: ${p.model}, computed ${p.generated}. `, "small");
+  const link = document.createElement("a");
+  link.href = HOW_IT_WORKS_URL; link.rel = "noopener"; link.textContent = "How it works";
+  line.appendChild(link);
+}
+
+function addNoteLine(note, text, className) {
+  const line = document.createElement("p");
+  line.textContent = text;
+  if (className) line.className = className;
+  note.appendChild(line);
+  return line;
 }
 
 init();

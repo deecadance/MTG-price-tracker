@@ -54,7 +54,15 @@ jobs:
           else
             git add data/ docs/
             git commit -m "Price snapshot $(date -u +%F)"
-            git push
+            # If something else saved to the repo meanwhile (e.g. the card
+            # charts, once switched on), catch up with it and try again.
+            for attempt in 1 2 3; do
+              if git push; then exit 0; fi
+              git pull --rebase || git rebase --abort || true
+              sleep 5
+            done
+            echo "::error::Could not save the snapshot after 3 attempts."
+            exit 1
           fi
 
       - name: Flag an incomplete run

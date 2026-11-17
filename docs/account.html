@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Price alerts — MTG Price Tracker</title>
+<meta name="robots" content="noindex">
+<style>
+  :root {
+    --bg: #12141a; --panel: #1c1f28; --text: #e8e9ee; --muted: #9aa0b0;
+    --accent: #e0703c; --border: #2c3040; --ok: #4cc38a; --danger: #e8647a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5;
+  }
+  header {
+    padding: 18px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+  }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  header a, main a, footer a { color: var(--muted); }
+  main { max-width: 860px; padding: 8px 24px 32px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; margin: 16px 0;
+  }
+  .muted { color: var(--muted); font-size: 14px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button, input, select {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; font-size: 14px; font-family: inherit;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  button.danger { border-color: var(--danger); color: var(--danger); }
+  input[type=text], input[type=search] { min-width: 0; }
+  #search { width: 100%; }
+  .price-input { width: 110px; }
+  #results { list-style: none; margin: 8px 0 0; padding: 0; max-height: 260px; overflow-y: auto; }
+  #results li {
+    padding: 7px 10px; border-radius: 6px; cursor: pointer; display: flex;
+    justify-content: space-between; gap: 12px;
+  }
+  #results li:hover, #results li:focus { background: var(--bg); outline: none; }
+  #selected { margin: 10px 0; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: normal; }
+  .status-ok { color: var(--ok); }
+  #notice { min-height: 1.5em; margin: 12px 0 0; }
+  #notice.error { color: var(--danger); }
+  #notice.ok { color: var(--ok); }
+  footer {
+    padding: 16px 24px 28px; border-top: 1px solid var(--border);
+    color: var(--muted); font-size: 12px; line-height: 1.6;
+  }
+  footer p { margin: 0 0 6px; }
+  @media (max-width: 640px) {
+    header, main, footer { padding-left: 16px; padding-right: 16px; }
+    /* On phones, each followed item becomes a small card instead of a wide row. */
+    #watch-table thead { display: none; }
+    #watch-table tr { display: block; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    #watch-table td { display: block; border: 0; padding: 2px 0; }
+    #watch-table td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Price alerts</h1>
+  <a href="index.html">Back to the charts</a>
+  <a href="privacy.html">Privacy</a>
+</header>
+
+<main>
+  <p class="muted">Prices and charts are free and public for everyone on the
+    <a href="index.html">main page</a>. An account only adds one thing: a
+    Telegram message when a price you follow crosses your threshold.</p>
+
+  <!-- Shown while accounts are switched off (docs/config.js is empty). -->
+  <section id="unavailable" class="panel">
+    <h2>Accounts are not available yet</h2>
+    <p class="muted" id="unavailable-detail">Price alerts are coming later. Everything else
+      on this site works without an account.</p>
+  </section>
+
+  <section id="signed-out" class="panel" hidden>
+    <h2>Sign in</h2>
+    <p class="muted">Use your Google or GitHub account. No password to remember: we only
+      receive the email address that identifies your account.</p>
+    <div class="row">
+      <button class="primary" id="sign-in-google">Sign in with Google</button>
+      <button class="primary" id="sign-in-github">Sign in with GitHub</button>
+    </div>
+    <p class="muted">By signing in you accept the <a href="privacy.html">privacy notice</a>.</p>
+  </section>
+
+  <div id="signed-in" hidden>
+    <section class="panel">
+      <div class="row" style="justify-content: space-between">
+        <span>Signed in as <strong id="user-email"></strong></span>
+        <button id="sign-out">Sign out</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>1. Telegram</h2>
+      <p class="muted">Alerts arrive as Telegram messages from our bot.</p>
+      <p>Status: <span id="telegram-status">checking…</span></p>
+      <div class="row">
+        <button class="primary" id="telegram-connect">Connect Telegram</button>
+        <button id="telegram-disconnect" hidden>Disconnect</button>
+      </div>
+      <p id="telegram-link-box" class="muted" hidden>
+        <a id="telegram-link" href="#" target="_blank" rel="noopener">Open Telegram and press “Start”</a>
+        to finish. The link works for 15 minutes; this page updates by itself once it worked.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>2. Add a price to follow</h2>
+      <label class="muted" for="search">Search a product or card by name</label>
+      <input type="search" id="search" placeholder="e.g. Foundations booster box" autocomplete="off">
+      <ul id="results"></ul>
+      <div id="add-form" hidden>
+        <div id="selected"></div>
+        <div class="row">
+          <label>Price type
+            <select id="metric"></select>
+          </label>
+        </div>
+        <div class="row" style="margin-top: 10px">
+          <label>Alert me above € <input class="price-input" id="above" type="text" inputmode="decimal" placeholder="optional"></label>
+          <label>or below € <input class="price-input" id="below" type="text" inputmode="decimal" placeholder="optional"></label>
+          <button class="primary" id="add-watch">Follow</button>
+        </div>
+        <p class="muted">You get one message when the price is past your threshold on two
+          snapshots in a row (so a single odd listing can't trigger it). After that, the alert
+          waits until the price moves back by 2% before it can trigger again. Prices are the
+          ones seen at snapshot time, once a day — not live prices.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>3. What you follow <span class="muted" id="watch-count"></span></h2>
+      <p class="muted" id="no-watches">Nothing yet. Search above to add something.</p>
+      <table id="watch-table" hidden>
+        <thead><tr><th>Item</th><th>Price type</th><th>Above</th><th>Below</th><th>Last snapshot</th><th></th></tr></thead>
+        <tbody id="watch-rows"></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>Delete my account</h2>
+      <p class="muted">Deletes your account, everything you follow, your Telegram connection
+        and your alert history, immediately and for good.</p>
+      <button class="danger" id="delete-account">Delete my account</button>
+    </section>
+  </div>
+
+  <p id="notice" role="status" aria-live="polite"></p>
+</main>
+
+<footer>
+  <p>Prices are the cheapest English-language listings on
+    <a href="https://www.cardtrader.com" rel="noopener">CardTrader</a>, in EUR,
+    without shipping, captured once a day. Not affiliated with CardTrader.</p>
+  <p>MTG Sealed Price Tracker is unofficial Fan Content permitted under the
+    <a href="https://company.wizards.com/en/legal/fancontentpolicy" rel="noopener">Fan Content Policy</a>.
+    Not approved/endorsed by Wizards. Portions of the materials used are property of
+    Wizards of the Coast. ©Wizards of the Coast LLC.</p>
+  <p><a href="privacy.html">Privacy notice / Informativa privacy</a></p>
+</footer>
+
+<script src="config.js"></script>
+<script src="js/account.js"></script>
+</body>
+</html>

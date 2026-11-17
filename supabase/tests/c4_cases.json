@@ -1,0 +1,39 @@
+{
+  "_about": "Shared examples of the alert rule (contract C4). Each case: the state before, the latest and previous snapshot values (cents, null = missing), and the expected result. The JavaScript rule (supabase/functions/send-alerts/alert_rule.js) is checked against these; the Python owner-alerts rule can be checked against the same file.",
+  "direction_cases": [
+    {"note": "above: equal to threshold on both days fires", "direction": "above", "threshold": 10000, "state": "armed", "latest": 10000, "previous": 10000, "expect_state": "fired", "expect_fired": true},
+    {"note": "above: only today over -> wait", "direction": "above", "threshold": 10000, "state": "armed", "latest": 10500, "previous": 9999, "expect_state": "armed", "expect_fired": false},
+    {"note": "above: only yesterday over -> nothing", "direction": "above", "threshold": 10000, "state": "armed", "latest": 9999, "previous": 10500, "expect_state": "armed", "expect_fired": false},
+    {"note": "above: today missing -> no change", "direction": "above", "threshold": 10000, "state": "armed", "latest": null, "previous": 12000, "expect_state": "armed", "expect_fired": false},
+    {"note": "above: yesterday missing -> no change", "direction": "above", "threshold": 10000, "state": "armed", "latest": 12000, "previous": null, "expect_state": "armed", "expect_fired": false},
+    {"note": "above: already fired -> no second message", "direction": "above", "threshold": 10000, "state": "fired", "latest": 12000, "previous": 12000, "expect_state": "fired", "expect_fired": false},
+    {"note": "above: exactly 98% does not re-arm", "direction": "above", "threshold": 10000, "state": "fired", "latest": 9800, "previous": 12000, "expect_state": "fired", "expect_fired": false},
+    {"note": "above: below 98% re-arms", "direction": "above", "threshold": 10000, "state": "fired", "latest": 9799, "previous": 12000, "expect_state": "armed", "expect_fired": false},
+    {"note": "above: re-arm needs both days present", "direction": "above", "threshold": 10000, "state": "fired", "latest": 9799, "previous": null, "expect_state": "fired", "expect_fired": false},
+    {"note": "above: fired + today missing -> no change", "direction": "above", "threshold": 10000, "state": "fired", "latest": null, "previous": 1, "expect_state": "fired", "expect_fired": false},
+    {"note": "above: no threshold set -> nothing", "direction": "above", "threshold": null, "state": "armed", "latest": 99999, "previous": 99999, "expect_state": "armed", "expect_fired": false},
+    {"note": "above: odd threshold, 333*0.98=326.34, 327 stays fired", "direction": "above", "threshold": 333, "state": "fired", "latest": 327, "previous": 400, "expect_state": "fired", "expect_fired": false},
+    {"note": "above: odd threshold, 326 re-arms", "direction": "above", "threshold": 333, "state": "fired", "latest": 326, "previous": 400, "expect_state": "armed", "expect_fired": false},
+    {"note": "below: equal on both days fires", "direction": "below", "threshold": 5000, "state": "armed", "latest": 5000, "previous": 5000, "expect_state": "fired", "expect_fired": true},
+    {"note": "below: only today under -> wait", "direction": "below", "threshold": 5000, "state": "armed", "latest": 4999, "previous": 5001, "expect_state": "armed", "expect_fired": false},
+    {"note": "below: zero is a real price, not missing", "direction": "below", "threshold": 5000, "state": "armed", "latest": 0, "previous": 0, "expect_state": "fired", "expect_fired": true},
+    {"note": "below: exactly 102% does not re-arm", "direction": "below", "threshold": 5000, "state": "fired", "latest": 5100, "previous": 4000, "expect_state": "fired", "expect_fired": false},
+    {"note": "below: above 102% re-arms", "direction": "below", "threshold": 5000, "state": "fired", "latest": 5101, "previous": 4000, "expect_state": "armed", "expect_fired": false},
+    {"note": "below: re-arm needs both days present", "direction": "below", "threshold": 5000, "state": "fired", "latest": 5101, "previous": null, "expect_state": "fired", "expect_fired": false},
+    {"note": "below: already fired -> no second message", "direction": "below", "threshold": 5000, "state": "fired", "latest": 100, "previous": 100, "expect_state": "fired", "expect_fired": false}
+  ],
+  "message_cases": [
+    {
+      "alert": {"name": "Foundations Play Booster Box", "source": "ct_sealed", "foil": false, "metric": "avg5_all", "direction": "above", "valueCents": 15999, "thresholdCents": 15000, "date": "2026-11-17", "itemId": 300000},
+      "expect": "Foundations Play Booster Box (sealed): average of the 5 cheapest (all sellers) is €159.99 — above your €150.00 threshold. Snapshot 2026-11-17. https://www.cardtrader.com/cards/300000"
+    },
+    {
+      "alert": {"name": "Sheoldred, the Apocalypse (Borderless) — Dominaria United", "source": "ct_card", "foil": true, "metric": "buy_now_nm_zero", "direction": "below", "valueCents": 5, "thresholdCents": 10, "date": "2026-11-18", "itemId": 12345},
+      "expect": "Sheoldred, the Apocalypse (Borderless) — Dominaria United (foil, NM): lowest price (CardTrader Zero) is €0.05 — below your €0.10 threshold. Snapshot 2026-11-18. https://www.cardtrader.com/cards/12345"
+    },
+    {
+      "alert": {"name": "Lightning Bolt — Magic 2010", "source": "ct_card", "foil": false, "metric": "ref_nm", "direction": "above", "valueCents": 123456, "thresholdCents": 100000, "date": "2026-11-18", "itemId": 7},
+      "expect": "Lightning Bolt — Magic 2010 (NM): reference price (all sellers) is €1234.56 — above your €1000.00 threshold. Snapshot 2026-11-18. https://www.cardtrader.com/cards/7"
+    }
+  ]
+}
