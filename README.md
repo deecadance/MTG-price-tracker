@@ -25,6 +25,40 @@ Only English-language listings count (see `config.json`). Data lives in
   `docs/index.html` turns into interactive charts.
 - `.github/workflows/daily.yml` — runs both scripts every morning on
   GitHub's servers and commits the result. Your computer can be off.
+  A second run in the afternoon is a safety net: it does nothing if the
+  morning snapshot is already complete.
+
+### What happens when something goes wrong
+
+- A problem with one set or product is logged and skipped; everything
+  else is still saved.
+- If CardTrader blocks the request (it sometimes blocks GitHub's
+  servers), or prices come back in a currency other than EUR, the run
+  stops early and keeps what it already saved.
+- Every run is recorded in the `runs` table of the database as
+  `complete`, `partial` or `failed`. Anything other than `complete`
+  turns the GitHub run red, and GitHub emails you.
+- If the prices haven't updated for 2+ days, the website shows a
+  warning at the top.
+
+A private companion repository, `mtg-price-archive`, keeps a weekly copy
+of this database plus a daily copy of free Cardmarket price data.
+
+## Built but switched off
+
+These parts of the bigger plan are ready but **off**, because
+CardTrader's terms require their written permission before their price
+data is used this way. Nothing below runs, calls CardTrader or
+publishes anything until it is switched on.
+
+| Phase | What | Where | Off switch | Guide |
+|---|---|---|---|---|
+| 1 | Daily prices for every single card, card charts (`docs/cards.html`) | `mtg-price-archive/cards/` | repo variables `CARDTRADER_SINGLES_ENABLED`, `PUBLISH_SINGLES_ENABLED` | `cards/README.md` there |
+| 2 | Telegram alerts for you | `mtg-price-archive/alerts/` | repo variable `ALERTS_ENABLED` | `alerts/README.md` there |
+| 3 | Accounts + alerts for other users | `supabase/`, `docs/account.html` here; `mtg-price-archive/supabase_sync/` | empty `docs/config.js`; variable `SUPABASE_SYNC_ENABLED` | [SETUP_ACCOUNTS.md](SETUP_ACCOUNTS.md) |
+| 4 | Price projections on the charts | `forecast.py` here | `"show_projections": false` in `config.json` | [FORECAST.md](FORECAST.md) |
+
+Suggested order once CardTrader agrees: 1 → 2 → 4 → 3.
 
 ## One-time setup
 
@@ -63,8 +97,10 @@ folder: `/docs` → Save.** After the first data run, your charts will be
 at `https://YOUR_USERNAME.github.io/mtg-tracker/`.
 
 > Note: with a **private** repo, GitHub Pages requires a paid plan. If
-> you stay on the free plan, either make the repo public (fine — it's
-> just prices, your token stays secret) or view charts locally (below).
+> you stay on the free plan, either make the repo public (your token
+> stays secret, but the price history becomes public — CardTrader's terms
+> ask for permission to use their price data this way) or view charts
+> locally (below).
 
 ### 5. Do a first test run
 
